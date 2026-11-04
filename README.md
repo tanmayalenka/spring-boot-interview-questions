@@ -11,6 +11,9 @@ Spring Boot interview questions and answers for Java developers.
 | 3 | [What is Dependency Injection (DI) in Spring?](#3-what-is-dependency-injection-di-in-spring) |
 | 4 | [What is Bean Scope in Spring?](#4-what-is-bean-scope-in-spring) |
 | 5 | [Spring Bean Lifecycle](#5-spring-bean-lifecycle) |
+| 6 | [Spring Boot Features](#6-spring-boot-features) |
+| 7 | [Important Spring Boot Annotations](#7-important-spring-boot-annotations) |
+| 8 | [How @Transactional works internally?](#8-how-transactional-works-internally) |
 <!-- TOC_END -->
 <!-- QUESTIONS_START -->
 ## Spring Framework
@@ -320,6 +323,270 @@ The lifecycle follows these steps:
     - `@PreDestroy`
     - `DisposableBean.destroy()`
     - Custom `destroy()`-method
+
+[⬆ Back to Table](#table-of-contents)
+
+## Spring Boot
+
+
+### 6. Spring Boot Features
+
+Spring Boot provides several powerful features that simplify Spring application development. It reduces boilerplate configuration and helps developers build standalone, production-ready applications quickly.
+
+#### 1. Auto-Configuration
+
+- Spring Boot automatically configures application components based on the dependencies available in the classpath.
+- It reduces the need for manual configuration.
+- We can override the default configuration whenever required.
+
+**Example:**
+
+If we add `spring-boot-starter-web`, Spring Boot automatically configures components required for a web application, including Spring MVC and an embedded web server.
+
+#### 2. Starter Dependencies
+
+- Starters are predefined dependency descriptors.
+- They group commonly required dependencies for specific functionalities.
+- They simplify dependency management.
+
+**Examples:**
+
+| Starter | Purpose |
+|---|---|
+| spring-boot-starter-web | REST API and web applications |
+| spring-boot-starter-data-jpa | Database operations using JPA |
+| spring-boot-starter-security | Application security |
+| spring-boot-starter-test | Application testing |
+| spring-boot-starter-validation | Bean validation |
+
+#### 3. Embedded Servers
+
+- Spring Boot provides embedded web servers.
+- We don't need to install and configure an external server separately.
+- We can run the application as a standalone executable JAR.
+
+**Supported servers:**
+- Tomcat (default for Spring MVC web applications)
+- Jetty
+- Undertow
+
+#### 4. Spring Boot Actuator
+
+- Actuator provides production-ready monitoring and management features.
+- It helps monitor application health, metrics and other operational information.
+
+**Common endpoints:**
+
+- `/actuator/health`
+- `/actuator/info`
+- `/actuator/metrics`
+- `/actuator/env`
+
+#### 5. Externalized Configuration
+
+- Spring Boot allows us to manage application configuration outside the source code.
+- We can use `application.properties` or `application.yml`.
+- We can also use environment variables and command-line arguments.
+
+**Example:**
+
+```properties
+server.port=8081
+spring.application.name=employee-service
+```
+
+#### 6. Spring Profiles
+
+- Profiles allow us to maintain different configurations for different environments.
+- We can define separate configurations for development, testing and production.
+
+**Example:**
+
+```text
+application-dev.properties
+application-test.properties
+application-prod.properties
+```
+
+Activate a profile:
+
+```properties
+spring.profiles.active=dev
+```
+
+#### 7. Minimal XML Configuration
+
+- Spring Boot primarily uses Java-based configuration and annotations.
+- It reduces the need for traditional XML configuration files.
+
+#### 8. Spring Boot CLI
+
+- Spring Boot CLI allows developers to run Spring applications using command-line tools.
+- It supports rapid application development using Groovy.
+
+#### 9. Production-Ready Features
+
+- Spring Boot provides features that help prepare applications for production.
+- Actuator provides health checks, metrics and monitoring endpoints.
+- It also supports externalized configuration and logging.
+
+#### 10. Easy Integration
+
+Spring Boot integrates easily with several technologies and frameworks.
+
+**Examples:**
+- Spring Data JPA
+- Spring Security
+- Spring Cloud
+- Hibernate
+- MySQL
+- MongoDB
+- Kafka
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 7. Important Spring Boot Annotations
+#### **1. @SpringBootApplication**
+`@SpringBootApplication` is a core annotation in Spring Boot that marks the main class of a Spring Boot application. It tells Spring Boot to enable auto-configuration, component scanning, and configuration support.
+
+It is a combination of three annotations:
+- `@SpringBootConfiguration`
+    - Indicates that the class provides Spring configuration.
+    - It is a specialized form of `@Configuration`.
+    - Allows you to define Spring beans using `@Bean`.
+- `@EnableAutoConfiguration`
+    - Automatically configures your application based on the dependencies available in the classpath.
+    - Reduces the need for manual configuration.
+    - **Example**: If you add `spring-boot-starter-web`, Spring Boot automatically configures web-related components such as the embedded Tomcat server and Spring MVC.
+- `@ComponentScan`
+    - Scans the current package and its subpackages for Spring components.
+    - Detects annotations such as: `@Component`, `@Service`, `@Repository`, `@Controller`, `@RestController`
+
+#### **2. Spring Stereotype Annotations**
+Stereotype Annotations are used to identify a Java class as a Spring-managed component (Spring Bean).
+The main Spring Stereotype Annotations are:
+- `@Component`
+    - It is a generic stereotype annotation.
+    - Used to mark a Java class as a Spring Bean.
+    - Spring automatically detects the class during component scanning.
+- `@Service`
+    - Used to mark a class as a Service Layer component.
+    - Generally contains business logic.
+    - Internally, it is a specialization of `@Component`.
+- `@Repository`
+    - Used to mark a class as a Data Access Layer component (DAO).
+    - Responsible for database operations.
+    - Supports automatic translation of persistence-related exceptions into Spring's `DataAccessException` hierarchy.
+- `@Controller`
+    - Used to mark a class as a Spring MVC Controller.
+    - Handles incoming HTTP requests.
+    - Generally returns a view name.
+- `@RestController`
+    - Used to develop RESTful web services.
+    - Returns data directly as JSON or XML (depending on configuration).
+    - It is a combination of: `@Controller` and `@ResponseBody`
+
+#### **3. @Primary annd @Qualifier Annotations**
+In Spring Framework, `@Primary` and `@Qualifier` annotations are used to resolve Bean ambiguity during Dependency Injection.
+- **@Primary Annotation**
+    - `@Primary` tells Spring that a particular bean should be preferred when multiple beans of the same type are available for dependency injection.
+- **@Qualifier Annotation**
+    - `@Qualifier` is used to specify exactly which bean should be injected when multiple beans of the same type are available.
+    - `@Qualifier` explicitly specifies the bean. It takes precedence over the default preference provided by `@Primary`.
+
+Imagine an e-commerce application supporting three payment methods:
+
+- Credit Card
+- UPI
+- Net Banking
+
+You can use `@Primary` to define the default payment method and `@Qualifier("upi")` to select a particular payment method wherever required.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 8. How @Transactional works internally?
+- Spring implements `@Transactional` using AOP (Aspect-Oriented Programming) and proxy-based transaction management.
+- Whenever Spring detects a bean containing the `@Transactional` annotation, it creates a proxy around that bean. Depending on the configuration, Spring uses either JDK Dynamic Proxy or CGLIB.
+- When a client calls a transactional method, the call first goes through the Spring proxy rather than directly invoking the actual method.
+- The proxy delegates the invocation to TransactionInterceptor, which reads the transaction configuration, such as propagation, isolation, and rollback rules.
+- Then it communicates with the appropriate PlatformTransactionManager, which starts a new transaction or joins an existing transaction.
+- After that, the actual business method executes.
+- If the method completes successfully, Spring commits the transaction. If an exception occurs, Spring checks the rollback rules and rolls back the transaction if applicable.
+- By default, Spring rolls back for `RuntimeException` and Error. Checked exceptions do not trigger rollback unless we explicitly configure rollbackFor.
+- In Spring's default proxy-based transaction management, private methods cannot be intercepted as transactional methods. Public methods are the recommended approach.
+
+```mermaid
+flowchart TD
+    A["Client"] --> B["Spring AOP Proxy"]
+    B --> C["TransactionInterceptor"]
+    C --> D["Read @Transactional Attributes"]
+    D --> E["PlatformTransactionManager"]
+    E --> F{"Transaction Exists?"}
+
+    F -->|No| G["Begin New Transaction"]
+    F -->|Yes| H["Join Existing Transaction"]
+
+    G --> I["Execute Actual Business Method"]
+    H --> I
+
+    I --> J{"Method Execution Result"}
+
+    J -->|Success| K["Commit Transaction"]
+    J -->|RuntimeException / Error| L["Rollback Transaction"]
+    J -->|Checked Exception| M["Commit by Default"]
+
+    K --> N["Return Result"]
+    L --> O["Propagate Exception"]
+    M --> O
+```
+#### What happens if we call a @Transactional method from another method in the same class?
+That is called self-invocation. Since Spring uses proxy-based AOP, an internal method call using this bypasses the proxy. Therefore, the transactional annotation on the internally invoked method is not intercepted.
+```mermaid
+flowchart TD
+    A["External Client"]
+    --> B["Spring Proxy"]
+
+    B --> C["createUser()"]
+
+    C --> D["this.saveUser()"]
+
+    D --> E["Actual Method Execution"]
+
+    E --> F["Proxy Bypassed"]
+
+    style F fill:#ffcccc,stroke:#cc0000,color:#000
+```
+
+#### Transaction Propagation - REQUIRED
+`Propagation.REQUIRED` is the default propagation. It joins an existing transaction if one exists; otherwise, it creates a new transaction.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant U as UserService Proxy
+    participant O as OrderService Proxy
+    participant TM as TransactionManager
+
+    C->>U: createUser()
+    U->>TM: Begin Transaction T1
+    TM-->>U: Transaction Started
+
+    U->>O: createOrder()
+    O->>TM: Check Existing Transaction
+    TM-->>O: Join Transaction T1
+
+    O-->>U: Method Completed
+    U->>TM: Commit Transaction T1
+    TM-->>U: Commit Successful
+    U-->>C: Return Result
+```
+#### Remember this execution chain
+
+**Client → Spring Proxy → TransactionInterceptor → TransactionManager → Business Method → Commit / Rollback**
+
+
 
 [⬆ Back to Table](#table-of-contents)
 
