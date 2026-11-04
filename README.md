@@ -19,6 +19,9 @@ Spring Boot interview questions and answers for Java developers.
 | 11 | [Optimistic vs Pessimistic Locking](#11-optimistic-vs-pessimistic-locking) |
 | 12 | [Sharding vs Partitioning](#12-sharding-vs-partitioning) |
 | 13 | [ACID Properties](#13-acid-properties) |
+| 14 | [API Gateway and Service Discovery](#14-api-gateway-and-service-discovery) |
+| 15 | [What is a Distributed Transaction?](#15-what-is-a-distributed-transaction) |
+| 16 | [What is the Transactional Outbox Pattern?](#16-what-is-the-transactional-outbox-pattern) |
 <!-- TOC_END -->
 <!-- QUESTIONS_START -->
 ## Spring Framework
@@ -1060,6 +1063,188 @@ COMMIT;
 
 Once the database successfully acknowledges the commit, the changes must survive a crash, subject to the database's configured durability guarantees.
 
+
+[⬆ Back to Table](#table-of-contents)
+
+## Microservices
+
+### 14. API Gateway and Service Discovery
+#### 1. **API Gateway**
+An API Gateway is a single entry point through which clients (web applications, mobile apps, etc.) access different backend microservices.
+
+Instead of clients communicating directly with multiple microservices, all requests first go through the API Gateway.
+
+#### How API Gateway works
+- A client sends an HTTP request to the API Gateway.
+- The gateway receives the request.
+- It identifies the appropriate microservice.
+- It forwards the request to that service.
+- The microservice processes the request.
+- The gateway returns the response to the client.
+
+#### Responsibilities of API Gateway
+- **Routing**: Routes requests to the appropriate microservice.
+- **Authentication**: Verifies user identity.
+- **Authorization**: Checks user permissions.
+- **Load Balancing**: Distributes requests across service instances.
+- **Rate Limiting**: Controls the number of requests.
+- **Logging**: Records API requests and responses.
+- **Caching**: Stores frequently requested data.
+- **SSL Termination**: Handles HTTPS connections.
+
+#### 2. **Service Discovery**
+Service Discovery is a mechanism in microservices architecture that automatically identifies the network locations (IP addresses and ports) of available microservices.
+
+In a microservices environment, services may start, stop, or change their IP addresses dynamically. Therefore, maintaining service addresses manually becomes difficult. Service Discovery solves this problem.
+
+#### How Service Discovery works
+- A microservice starts.
+- It registers itself with a Service Registry.
+- The Service Registry stores its IP address and port.
+- Another microservice wants to communicate with it.
+- It queries the registry to find the service location.
+- The request is sent to the discovered service instance.
+
+#### Components of Service Discovery
+- **Service Provider**: The microservice that provides functionality.
+- **Service Registry**: Stores service names, IP addresses, and ports.
+- **Service Consumer**: The microservice that wants to communicate with another service.
+- **Health Check**: Checks whether a registered service is available.
+
+#### Types of Service Discovery
+1. Client-Side Service Discovery
+    - The client queries the Service Registry.
+    - It obtains available service instances.
+    - It selects an instance and sends the request directly.
+2. Server-Side Service Discovery
+    - The client sends a request to a load balancer or gateway.
+    - The gateway queries or uses the Service Registry.
+    - It forwards the request to an available service instance.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 15. What is a Distributed Transaction?
+- A distributed transaction is a transaction that involves multiple independent services or databases to complete a single business operation.
+- In microservices architecture, each service has its own database. When multiple services participate in one business operation, we need to maintain data consistency.
+- We can achieve this using approaches such as:
+    - Two-Phase Commit (2PC).
+    - Saga Pattern.
+- The Saga Pattern is commonly preferred in microservices because it supports independent local transactions and compensating actions.
+
+#### **i. Two-Phase Commit (2PC)**
+Two-Phase Commit is a distributed transaction protocol that coordinates multiple services or databases to commit or abort a transaction.
+
+It has two phases:
+- Phase 1: **Prepare Phase**
+    - Transaction Coordinator sends a prepare request to all participants.
+    - Each participant checks whether it can commit.
+    - Participants respond with YES or NO.
+
+- Phase 2: **Commit Phase**
+    - If all participants respond YES, the coordinator sends COMMIT.
+    - If any participant responds NO, the coordinator sends ROLLBACK.
+#### **ii. Saga Pattern**
+- The Saga Pattern is commonly used to manage distributed transactions in microservices.
+- Instead of one global transaction, each microservice performs its own local transaction.
+- If something fails, compensating transactions are executed to undo the previous successful operations logically.
+
+There are two types of Saga Pattern:
+##### 1. **Choreography-Based Saga**
+- Services communicate using events.
+- No central coordinator.
+- Each service listens for events and performs its operation.
+```
+Order Service
+     |
+     | OrderCreated Event
+     v
+Payment Service
+     |
+     | PaymentCompleted Event
+     v
+Inventory Service
+     |
+     | StockUpdated Event
+     v
+Shipping Service
+```
+##### 2. **Orchestration-Based Saga**
+- A central Saga Orchestrator controls the workflow.
+- It tells each service what operation to perform.
+- If an operation fails, it triggers compensating actions.
+```
+       Saga Orchestrator
+          /    |    \
+         v     v     v
+       Order Payment Inventory
+       Service Service Service
+```
+**Note**: `@Transactional` in Spring Boot generally manages a local database transaction. It does not automatically provide an atomic transaction across independent microservices.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 16. What is the Transactional Outbox Pattern?
+- The Transactional Outbox Pattern is a design pattern used in microservices to reliably publish events to message brokers like Kafka.
+- Instead of directly publishing messages to Kafka after saving business data, we save both business data and the corresponding event into two database tables within a single database transaction.
+- A separate publisher or CDC tool such as Debezium reads events from the Outbox Table and publishes them to Kafka.
+- This solves the dual-write problem and helps ensure reliable event delivery.
+
+#### 1. How does it work?
+- Customer places an order.
+- Order Service saves the order into the Order Table.
+- Order Service saves an event into the Outbox Table.
+- Both database operations happen in one local transaction.
+- A separate process reads events from the Outbox Table.
+- It publishes those events to Kafka.
+- After successful publishing, the event is marked as processed.
+```
+        Customer
+            |
+            v
+       Order Service
+            |
+            v
+      Database Transaction
+            |
+       +----+-----+
+       |          |
+       v          v
+   Order Table  Outbox Table
+                  |
+                  v
+            Outbox Publisher
+                  |
+                  v
+                Kafka
+                  |
+          +-------+-------+
+          |               |
+          v               v
+     Payment Service  Inventory Service
+```
+#### 2. Approaches to Implement Outbox Pattern
+1. **Polling Publisher**
+    - Publisher periodically checks the Outbox Table.
+    - Reads unpublished events.
+    - Publishes events to Kafka.
+    - Marks events as published.
+    - Example: Spring Boot @Scheduled.
+
+2. **Transaction Log Tailing**
+    - Reads database transaction log changes.
+    - Detects new Outbox records.
+    - Publishes events to Kafka.
+
+#### 3. Advantages of Transactional Outbox Pattern
+- Prevents database and message publishing dual-write inconsistencies.
+- Ensures business data and event records are saved atomically.
+- Supports reliable event-driven communication.
+- Helps implement Saga Pattern.
+- Reduces the risk of losing events due to temporary Kafka failures.
+
+**One important point**: The Outbox Pattern normally provides at-least-once event delivery, not automatic exactly-once processing. Consumers should be idempotent so duplicate events do not cause duplicate business operations.
 
 [⬆ Back to Table](#table-of-contents)
 
