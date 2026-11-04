@@ -14,6 +14,11 @@ Spring Boot interview questions and answers for Java developers.
 | 6 | [Spring Boot Features](#6-spring-boot-features) |
 | 7 | [Important Spring Boot Annotations](#7-important-spring-boot-annotations) |
 | 8 | [How @Transactional works internally?](#8-how-transactional-works-internally) |
+| 9 | [What is the N+1 Query Problem?](#9-what-is-the-n1-query-problem) |
+| 10 | [What is a Database Index?](#10-what-is-a-database-index) |
+| 11 | [Optimistic vs Pessimistic Locking](#11-optimistic-vs-pessimistic-locking) |
+| 12 | [Sharding vs Partitioning](#12-sharding-vs-partitioning) |
+| 13 | [ACID Properties](#13-acid-properties) |
 <!-- TOC_END -->
 <!-- QUESTIONS_START -->
 ## Spring Framework
@@ -586,6 +591,474 @@ sequenceDiagram
 
 **Client → Spring Proxy → TransactionInterceptor → TransactionManager → Business Method → Commit / Rollback**
 
+
+[⬆ Back to Table](#table-of-contents)
+
+### 9. What is the N+1 Query Problem?
+- The **N+1 Query** Problem is a common performance issue in Spring Boot applications using Spring Data JPA and Hibernate.
+- It happens when Hibernate executes:
+    - **1 query** to fetch a list of parent entities.
+    - **N additional queries** to fetch related entities for each parent.
+- Instead of fetching the required data efficiently, the application makes multiple database calls.
+- **For example**, suppose we have `Department` and `Employee` entities with a One-to-Many relationship. If I fetch 100 departments using `findAll()`, Hibernate executes one query to fetch all departments. Now, if I iterate through those departments and access each department's employees, and the relationship is configured as LAZY, Hibernate may execute another query for each department. So, instead of executing one query, it executes 101 queries in total. This increases database round trips and impacts application performance.
+- To solve this problem, we can use `JOIN FETCH`, `@EntityGraph`, `@BatchSize`, or `DTO projections`, depending on the use case.
+- In my applications, I prefer `JOIN FETCH` or `EntityGraph` when I need associated entities, and `DTO projections` when I only need specific fields for API responses."
+```java
+@Query("""
+    SELECT DISTINCT d
+    FROM Department d
+    LEFT JOIN FETCH d.employees
+    """)
+List<Department> findAllWithEmployees();
+```
+
+[⬆ Back to Table](#table-of-contents)
+
+## Database & SQL
+
+### 10. What is a Database Index?
+- A database index is a data structure that helps the database retrieve records faster without scanning the entire table.
+- We can compare it with the index of a book. If we want to find a particular topic, instead of reading every page, we check the index and directly find the required page.
+- Similarly, a database index helps the database find records faster without scanning the entire table.
+- For example, suppose we have an Employee table with one lakh records, and frequently we search employees using their email. We can create an index on the email column using `CREATE INDEX`. This helps improve `SELECT` query performance.
+- However, indexes also have disadvantages. They consume additional storage and can slow down `INSERT`, `UPDATE`, and `DELETE` operations because the database needs to maintain the indexes. So, we should create indexes on frequently searched columns and columns used in `JOIN` conditions based on actual query performance. Too many indexes can affect overall database performance.
+- Most relational databases, such as MySQL and PostgreSQL, commonly use a B-Tree or B+Tree-based index for ordinary indexes.
+```sql
+CREATE INDEX idx_employee_email
+ON employee(email);
+```
+#### **Types of Database Indexes**
+1. **Primary Index**
+    - Created on the primary key of a table.
+    - Ensures each record can be uniquely identified.
+    - Primary key values cannot be NULL or duplicated.
+2. **Clustered Index**
+    - Determines the physical or logical organization of table data according to the index key (implementation varies by database).
+    - Usually, a table can have only one clustered organization.
+    - Useful for range-based queries.
+    ```sql
+    CREATE CLUSTERED INDEX idx_student_id
+    ON Students(student_id);
+    ```
+3. **Non-Clustered Index**
+    - Stores index keys separately from the actual table data.
+    - Contains pointers or references to the corresponding rows.
+    - A table can have multiple non-clustered indexes.
+    ```sql
+    CREATE NONCLUSTERED INDEX idx_student_name
+    ON Students(name);
+    ```
+4. **Unique Index**
+    - Ensures that indexed values are unique.
+    - Prevents duplicate values in indexed columns.
+    ```sql
+    CREATE UNIQUE INDEX idx_email
+    ON Students(email);
+    ```
+5. **Composite Index (Multi-Column Index)**
+    - Created on two or more columns.
+    - Useful when queries frequently filter or sort using multiple columns.
+    - Column order matters.
+    ```sql
+    CREATE INDEX idx_name_age
+    ON Students(name, age);
+    ```
+6. **B-Tree Index**
+    - Uses  balanced tree structure to organize indexed values.
+    - Supports equality searches, range searches, and sorting.
+    - One of the most commonly used index structures.
+7. **Full-Text Index**
+    - Designed for searching words and phrases within large text fields.
+    - Useful for document search and content search.
+    ```sql
+    CREATE FULLTEXT INDEX idx_description
+    ON Articles(description);
+    ```
+
+[⬆ Back to Table](#table-of-contents)
+
+
+### 11. Optimistic vs Pessimistic Locking
+
+| Comparison Criteria | Optimistic Locking | Pessimistic Locking |
+|---|---|---|
+| **Definition** | Assumes concurrent conflicts are rare. | Assumes concurrent conflicts may occur frequently. |
+| **Basic approach** | Allows concurrent access and checks for conflicts during updates. | Locks the record before modification. |
+| **Lock acquisition** | No exclusive lock during the read and application processing phase. | Acquires a database lock before modification. |
+| **Conflict detection** | At update time. | When acquiring an incompatible lock. |
+| **Concurrency** | Multiple transactions can read and process the same record simultaneously. | Conflicting transactions must wait for the lock to be released. |
+| **Data consistency** | Maintained through version checking. | Maintained through database locking. |
+| **Implementation** | Version number or timestamp. | Database row-level locking or other appropriate locks. |
+| **Spring Boot annotation** | `@Version` | `@Lock` |
+| **JPA lock mode** | `OPTIMISTIC` | `PESSIMISTIC_WRITE`, `PESSIMISTIC_READ` |
+| **Hibernate support** | Automatically checks entity version during updates. | Requests database locks through Hibernate. |
+| **SQL implementation** | `UPDATE ... WHERE id=? AND version=?` | `SELECT ... FOR UPDATE` |
+| **Version column** | Required for version-based optimistic locking. | Not required. |
+| **Concurrent update** | One update may fail due to a version mismatch. | Competing updates wait for the lock. |
+| **Conflict handling** | Retry or return a conflict response. | Wait until the lock is released. |
+| **Transaction waiting** | Generally does not wait during application processing. | May wait for another transaction. |
+| **Performance** | Generally better when conflicts are rare. | Can have additional waiting overhead. |
+| **Scalability** | Good for high-read, low-write applications. | Requires careful lock management under high contention. |
+| **Deadlock possibility** | Possible, but less likely due to fewer long-held explicit locks. | More susceptible to deadlocks. |
+| **Retry mechanism** | Often required after version conflicts. | May be required after deadlocks or lock timeouts. |
+| **Database resources** | Usually holds fewer explicit locks for shorter durations. | Holds locks until transaction completion. |
+| **Transaction duration** | Application processing can happen without holding an exclusive row lock. | Transactions should be short to reduce lock contention. |
+| **Advantages** | Better concurrency, fewer long-held locks, suitable for read-heavy workloads. | Prevents conflicting modifications while the lock is held. |
+| **Disadvantages** | Version conflicts, failed updates, retry complexity. | Lock waiting, deadlocks, timeouts, reduced throughput under contention. |
+| **Best suited for** | Applications where concurrent updates are uncommon. | Applications where concurrent updates are frequent. |
+| **Real-world examples** | Employee management, user profiles, product catalog, document editing. | Ticket booking, inventory reservation, high-contention wallet operations. |
+| **Banking example** | Detects conflicting account updates using a version number. | Locks the account record while performing a transaction. |
+| **Exception in Hibernate/JPA** | `OptimisticLockException` | `PessimisticLockException`, `LockTimeoutException` |
+| **Conflict outcome** | Update is rejected if the version is stale. | Conflicting transaction waits or fails on timeout. |
+| **Main concept** | Check whether someone modified the data before updating. | Prevent conflicting modifications by locking the data first. |
+
+#### Easy Way to Remember
+
+| Optimistic Locking | Pessimistic Locking |
+|---|---|
+| Read → Modify → Check → Update | Lock → Read → Modify → Update → Release |
+| `@Version` | `@Lock` |
+| Version mismatch | Lock waiting |
+| Best for low contention | Best for high contention |
+
+#### Interview Conclusion
+
+Optimistic Locking is preferred when conflicts are rare and read operations are frequent. Pessimistic Locking is preferred when concurrent modifications are frequent and transactions need to be serialized.
+
+**Remember:**
+- Optimistic = Check before updating.
+- Pessimistic = Lock before updating.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 12. Sharding vs Partitioning
+Sharding and Partitioning are database techniques used to divide large datasets into smaller, manageable pieces to improve database performance, scalability, and manageability.
+
+The main difference is:
+- **Partitioning**: Divides a large table into smaller parts, generally within the same database system.
+- **Sharding**: Distributes data across multiple independent database instances or servers.
+
+#### 1. **What is Partitioning?**
+- Partitioning is a database technique in which a large table is divided into multiple smaller parts called partitions.
+- These partitions are generally managed by the same database system.
+
+**Example:**
+- Suppose an e-commerce application has an `orders` table containing 10 million records.
+- We can divide the table based on order year:
+
+| Partition | Data |
+|---|---|
+| Partition 1 | Orders from 2023 |
+| Partition 2 | Orders from 2024 |
+| Partition 3 | Orders from 2025 |
+| Partition 4 | Orders from 2026 |
+
+**Benefits:**
+- Improves query performance through partition pruning.
+- Makes large tables easier to manage.
+- Simplifies archiving and deleting old data.
+- Improves data maintenance.
+
+##### Types of Partitioning
+
+1. **Range Partitioning:** Divides data based on ranges, such as dates or IDs.
+2. **List Partitioning:** Divides data based on specific values, such as country or department.
+3. **Hash Partitioning:** Uses a hash function to distribute records across partitions.
+4. **Composite Partitioning:** Combines multiple partitioning strategies, such as range and hash.
+
+#### 2. **What is Sharding?**
+
+- Sharding is a database architecture technique in which a large dataset is divided into smaller subsets called shards and distributed across multiple independent database servers.
+- Each shard stores only a portion of the overall dataset.
+
+**Example:**
+- Suppose a social media application has 100 million users.
+- Instead of storing all users on one database server, we distribute users across four database servers.
+
+| Shard | Database Server | User IDs |
+|---|---|---|
+| Shard 1 | Database Server 1 | 1–25 million |
+| Shard 2 | Database Server 2 | 25–50 million |
+| Shard 3 | Database Server 3 | 50–75 million |
+| Shard 4 | Database Server 4 | 75–100 million |
+
+**Benefits:**
+- Provides horizontal scalability.
+- Distributes database workload.
+- Distributes storage across multiple servers.
+- Helps handle very large datasets.
+- Can improve overall throughput.
+
+##### Types of Sharding
+
+1. **Range-based Sharding:** Distributes data based on ranges of values.
+2. **Hash-based Sharding:** Uses a hash function to determine the shard.
+3. **Directory-based Sharding:** Maintains a lookup table that maps records to their respective shards.
+4. **Geographical Sharding:** Distributes data based on geographical locations.
+
+---
+
+#### 3. **Sharding vs Partitioning – Complete Comparison Table**
+| Comparison Criteria | Partitioning | Sharding |
+|---|---|---|
+| **Definition** | Divides a large table into smaller logical or physical partitions. | Divides a large dataset into smaller subsets distributed across multiple database servers. |
+| **Primary purpose** | Improve query performance and manageability. | Improve horizontal scalability and distribute database load. |
+| **Data distribution** | Data is divided into partitions within a database system. | Data is distributed across independent database instances or servers. |
+| **Architecture** | Generally centralized database architecture. | Distributed database architecture. |
+| **Database servers** | Usually one database server or cluster. | Multiple database servers or clusters. |
+| **Storage** | Partitions are managed within the same database system. | Each shard has its own storage resources. |
+| **Scalability** | Primarily improves data organization and query performance. | Provides horizontal scaling by adding database servers. |
+| **Performance** | Improves query performance through partition pruning and efficient data access. | Improves performance by distributing queries and workloads across servers. |
+| **Data ownership** | Managed by the same database system. | Each shard owns a subset of the overall data. |
+| **Data distribution mechanism** | Partition key. | Shard key. |
+| **Query execution** | Database engine determines which partitions to access. | Application, proxy, or database routing layer determines which shard to access. |
+| **Cross-partition queries** | Usually handled within the same database system. | May require distributed queries across multiple servers. |
+| **Joins** | Joins between partitions are generally handled by the database engine. | Cross-shard joins are more complex and may require application-level processing. |
+| **Transactions** | Generally easier to manage within one database system. | Distributed transactions can be complex when multiple shards are involved. |
+| **Maintenance** | Easier to maintain and manage. | More complex to maintain and monitor. |
+| **Data rebalancing** | May require repartitioning or reorganizing data. | May require redistributing data between database servers. |
+| **Availability** | Depends on the availability architecture of the database. | Can provide distributed availability when combined with replication and failover. |
+| **Complexity** | Comparatively simple. | Comparatively complex. |
+| **Cost** | Usually lower infrastructure and operational complexity. | Higher infrastructure and operational complexity. |
+| **Best suited for** | Large tables within a database system. | Very large datasets that exceed the capacity of a single database server. |
+| **Example** | Orders table divided by year into multiple partitions. | Users distributed across four database servers. |
+
+#### 4. **Partitioning SQL Example**
+
+Suppose we have an orders table.
+
+```sql
+CREATE TABLE orders (
+    order_id BIGINT,
+    customer_id BIGINT,
+    order_date DATE,
+    amount DECIMAL(10,2)
+)
+PARTITION BY RANGE (order_date);
+```
+
+Create partitions:
+
+```sql
+CREATE TABLE orders_2024
+PARTITION OF orders
+FOR VALUES FROM ('2024-01-01')
+TO ('2025-01-01');
+
+CREATE TABLE orders_2025
+PARTITION OF orders
+FOR VALUES FROM ('2025-01-01')
+TO ('2026-01-01');
+
+CREATE TABLE orders_2026
+PARTITION OF orders
+FOR VALUES FROM ('2026-01-01')
+TO ('2027-01-01');
+```
+
+Query:
+
+```sql
+SELECT *
+FROM orders
+WHERE order_date >= '2025-01-01'
+AND order_date < '2026-01-01';
+```
+
+The database can access only the relevant partition through **Partition Pruning**.
+
+#### 5. **Real-World Examples**
+
+| Application Scenario | Partitioning | Sharding |
+|---|---|---|
+| E-commerce orders | Divide orders by year or month. | Distribute customers and their orders across multiple databases. |
+| Social media | Partition posts by creation date. | Distribute users across multiple database servers. |
+| Banking | Partition transaction history by date. | Distribute customer accounts across database servers. |
+| Employee management | Partition employee records by department. | Distribute employee data across multiple database instances. |
+| Logging systems | Partition logs by date. | Distribute logs across multiple storage servers. |
+| Food delivery | Partition historical orders by month. | Distribute customer data across multiple database servers. |
+
+**Remember:**
+- Partitioning = Divide a large table.
+- Sharding = Distribute data across multiple database servers.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+
+### 13. ACID Properties
+
+ACID properties are a set of four important principles that ensure database transactions are processed reliably and maintain data consistency, even when errors, system failures, or concurrent transactions occur.
+
+ACID stands for:
+
+- **A – Atomicity**
+- **C – Consistency**
+- **I – Isolation**
+- **D – Durability**
+
+#### 1. **Atomicity**
+- Atomicity ensures that all operations in a transaction succeed together or fail together. It prevents partial transactions.
+- In simple words, all operations within a transaction must succeed. If even one operation fails, the entire transaction must be rolled back.
+
+##### **Example**: Bank money transfer
+Suppose User A transfers ₹5,000 to User B.
+
+Initially:
+- User A balance = ₹20,000
+- User B balance = ₹10,000
+
+Two operations must happen:
+
+- Deduct ₹5,000 from User A.
+- Add ₹5,000 to User B.
+
+Both operations must succeed.
+
+```sql
+BEGIN;
+
+UPDATE accounts
+SET balance = balance - 5000
+WHERE id = 101;
+
+UPDATE accounts
+SET balance = balance + 5000
+WHERE id = 102;
+
+COMMIT;
+```
+
+If any operation fails:
+
+```sql
+ROLLBACK;
+```
+
+#### 2. **Consistency**
+- Consistency ensures that every committed transaction maintains database constraints, relationships, and business rules. The database moves from one valid state to another valid state.
+- All database constraints, rules, and validations must remain satisfied before and after the transaction.
+
+##### **Example**: Bank money transfer
+Suppose the database has a rule:
+
+- Account balance cannot be negative.
+- User A has ₹10,000.
+- If User A tries to withdraw ₹15,000, the transaction must fail because it violates the business rule.
+
+##### SQL Example
+
+```sql
+CREATE TABLE accounts (
+    id INT PRIMARY KEY,
+    balance DECIMAL(10,2)
+        CHECK (balance >= 0)
+);
+```
+
+Now execute:
+
+```sql
+UPDATE accounts
+SET balance = -5000
+WHERE id = 101;
+```
+
+The database rejects this update because it violates the CHECK constraint.
+
+#### 3. **Isolation**
+
+- Isolation ensures that concurrent transactions do not interfere with each other and helps prevent concurrency problems such as dirty reads, non-repeatable reads, and phantom reads.
+- Each transaction should behave as if it is executing independently, according to the selected isolation level.
+
+##### **Example**: Railway ticket booking
+
+Suppose only one seat is available.
+
+Two users try to book the same seat simultaneously.
+
+- User A starts a booking transaction.
+- User B starts another booking transaction.
+- Both transactions attempt to book the same seat.
+
+The database must ensure that both transactions cannot successfully reserve the same seat.
+
+##### **Common Concurrency Problems**
+
+| Problem | Explanation |
+|---|---|
+| Dirty Read | A transaction reads uncommitted data from another transaction. |
+| Non-Repeatable Read | A transaction reads the same row twice and gets different committed values. |
+| Phantom Read | Repeating a query returns additional or missing rows because another transaction changed the matching rows. |
+| Lost Update | One transaction overwrites another transaction's update. |
+
+##### **Isolation Levels**
+
+| Isolation Level | Dirty Read | Non-Repeatable Read | Phantom Read |
+|---|---|---|---|
+| Read Uncommitted | Possible | Possible | Possible |
+| Read Committed | Prevented | Possible | Possible |
+| Repeatable Read | Prevented | Prevented | Database-dependent |
+| Serializable | Prevented | Prevented | Prevented |
+
+**Note**: The table shows standard SQL isolation guarantees. Actual behavior can vary by database engine and its MVCC implementation.
+
+##### SQL Example
+
+```sql
+SET TRANSACTION ISOLATION LEVEL
+SERIALIZABLE;
+
+BEGIN;
+
+SELECT *
+FROM accounts
+WHERE id = 101;
+
+UPDATE accounts
+SET balance = balance - 1000
+WHERE id = 101;
+
+COMMIT;
+```
+
+Serializable isolation provides the strongest standard isolation guarantee, although transactions may experience blocking or serialization failures.
+
+#### 4. **Durability**
+
+Durability ensures that committed transaction changes are permanently stored and can be recovered even after a system failure.
+
+
+##### **Example**: Online payment
+
+- Suppose a customer successfully pays ₹2,000 for an order.
+- The database commits the payment transaction.
+- Immediately after that, the application server crashes.
+- When the application restarts, the payment information must still exist in the database.
+- This is durability.
+
+##### **How does the database achieve durability?**
+Databases generally use:
+
+- Write-Ahead Logging (WAL).
+- Transaction logs.
+- Disk persistence.
+- Recovery mechanisms.
+
+##### SQL Example
+
+```sql
+BEGIN;
+
+UPDATE accounts
+SET balance = balance - 2000
+WHERE id = 101;
+
+COMMIT;
+```
+
+Once the database successfully acknowledges the commit, the changes must survive a crash, subject to the database's configured durability guarantees.
 
 
 [⬆ Back to Table](#table-of-contents)
