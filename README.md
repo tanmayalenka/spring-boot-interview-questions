@@ -22,6 +22,9 @@ Spring Boot interview questions and answers for Java developers.
 | 14 | [API Gateway and Service Discovery](#14-api-gateway-and-service-discovery) |
 | 15 | [What is a Distributed Transaction?](#15-what-is-a-distributed-transaction) |
 | 16 | [What is the Transactional Outbox Pattern?](#16-what-is-the-transactional-outbox-pattern) |
+| 17 | [Circuit Breaker Pattern](#17-circuit-breaker-pattern) |
+| 18 | [Bulkhead Pattern](#18-bulkhead-pattern) |
+| 19 | [Retry Pattern](#19-retry-pattern) |
 <!-- TOC_END -->
 <!-- QUESTIONS_START -->
 ## Spring Framework
@@ -1245,6 +1248,214 @@ Shipping Service
 - Reduces the risk of losing events due to temporary Kafka failures.
 
 **One important point**: The Outbox Pattern normally provides at-least-once event delivery, not automatic exactly-once processing. Consumers should be idempotent so duplicate events do not cause duplicate business operations.
+
+[⬆ Back to Table](#table-of-contents)
+
+### 17. Circuit Breaker Pattern
+- The Circuit Breaker Pattern is a design pattern used in microservices and distributed systems to prevent repeated failures when a service or external dependency becomes unavailable.
+- It protects an application from continuously calling a failing service, helping prevent cascading failures and improving system resilience.
+
+#### **Example**
+- Suppose we have an Order Service that communicates with a Payment Service to process payments.
+- Now, imagine the Payment Service is down or responding very slowly. The Order Service continuously sends requests to the Payment Service, and those requests keep failing or timing out.
+- If this continues, the Order Service may also consume all its threads and resources, eventually affecting the entire application.
+- To avoid this situation, we use the Circuit Breaker Pattern.
+
+It has three states:
+
+- **Closed**: All requests are allowed to pass through. The circuit breaker monitors failures.
+- **Open**: When failures cross a configured threshold, the circuit breaker opens and stops sending requests to the failing service. Instead, it returns a fallback response.
+- **Half-Open**: After a configured waiting period, it allows a few test requests to check whether the service has recovered. If the test requests succeed, the circuit breaker moves back to `Closed`. If they fail, it moves back to `Open`.
+```text
+       Failures exceed threshold
+  ┌──────────────────────────────┐
+  │                              ▼
+CLOSED ───────────────────────► OPEN
+  ▲                              │
+  │                              │ Wait duration
+  │                              ▼
+  └──────────────────────── HALF-OPEN
+             Success       Failure → OPEN
+```
+
+In Spring Boot, we can implement this pattern using Resilience4j.
+
+```yaml
+resilience4j:
+  circuitbreaker:
+    instances:
+      paymentService:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 2
+        minimumNumberOfCalls: 5
+```
+#### **Config Details**:
+- `slidingWindowSize`: 5 – Evaluate the last 5 calls.
+- `failureRateThreshold`: 50 – Open circuit when failure rate reaches 50%.
+- `waitDurationInOpenState`: 10s – Wait 10 seconds before testing recovery.
+- `permittedNumberOfCallsInHalfOpenState`: 2 – Allow 2 test calls.
+- `minimumNumberOfCalls`: 5 – Require at least 5 calls before calculating the failure rate.
+
+```java
+@Service
+public class PaymentService {
+
+    @CircuitBreaker(
+        name = "paymentService",
+        fallbackMethod = "paymentFallback"
+    )
+    public String processPayment() {
+
+        // Call external payment service
+        return restTemplate.getForObject(
+            "http://payment-service/pay",
+            String.class
+        );
+    }
+
+    public String paymentFallback(Exception ex) {
+        return "Payment service is temporarily unavailable";
+    }
+}
+```
+>When the circuit is OPEN, the method call is blocked and the fallback method is invoked.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 18. Bulkhead Pattern
+The Bulkhead Pattern is a fault-tolerance design pattern used in microservices to isolate resources so that failure or overload in one service does not affect the entire application.
+
+#### **Example**
+- Imagine an e-commerce application with three services:
+    - Order Service
+    - Payment Service
+    - Notification Service
+- Suppose the Notification Service becomes very slow because an external email provider is responding slowly.
+- If all three services share the same thread pool, Notification requests may consume all available threads.
+- As a result, even Order and Payment requests may stop processing.
+#### How does Bulkhead solve this?
+- It creates separate thread pools or resource limits for different services.
+    - Order Service gets its own thread pool.
+    - Payment Service gets its own thread pool.
+    - Notification Service gets its own thread pool.
+- If Notification Service becomes slow, only its allocated resources are affected. Order and Payment services can continue working. This is called resource isolation.
+
+#### **Types of Bulkhead**
+There are two common approaches:
+1. Thread Pool Bulkhead
+    - Creates separate thread pools for different operations.
+    - Limits the number of concurrent threads.
+    - Prevents one slow operation from consuming all application threads.
+2. Semaphore Bulkhead
+    - Limits the number of concurrent calls.
+    - Does not create a separate thread pool.
+    - Uses permits to control how many requests can execute simultaneously.
+```yml
+resilience4j:
+  bulkhead:
+    instances:
+      paymentService:
+        maxConcurrentCalls: 5
+        maxWaitDuration: 0
+
+  thread-pool-bulkhead:
+    instances:
+      notificationService:
+        maxThreadPoolSize: 5
+        coreThreadPoolSize: 2
+        queueCapacity: 10
+```
+#### **Config Details**
+- `maxConcurrentCalls`: 5 – Maximum 5 concurrent calls for semaphore bulkhead.
+- `maxWaitDuration`: 0 – Do not wait for an available permit.
+- `maxThreadPoolSize`: 5 – Maximum thread pool size.
+- `coreThreadPoolSize`: 2 – Core number of threads.
+- `queueCapacity`: 10 – Maximum queued tasks.
+```java
+@Service
+public class PaymentService {
+
+    @Bulkhead(
+        name = "paymentService",
+        type = Bulkhead.Type.SEMAPHORE,
+        fallbackMethod = "paymentFallback"
+    )
+    public String processPayment() {
+
+        return "Payment processed successfully";
+    }
+
+    public String paymentFallback(
+            Exception ex) {
+
+        return "Payment service is busy. Try again later";
+    }
+}
+```
+>When five concurrent calls are already executing, additional calls cannot acquire a permit and are rejected. The fallback can handle that rejection.
+
+
+[⬆ Back to Table](#table-of-contents)
+
+### 19. Retry Pattern
+- The Retry Pattern is a fault-tolerance design pattern used in microservices to automatically retry a failed operation when the failure is temporary.
+- Instead of immediately returning an error, the application attempts the operation again a configured number of times.
+
+#### **Example**
+Imagine an e-commerce application:
+- Order Service calls Payment Service.
+- Due to a temporary network issue, the Payment Service does not respond.
+- The request fails.
+- Instead of immediately failing the order, Order Service retries the request.
+- On the second attempt, Payment Service responds successfully. The order can now proceed. This is called the Retry Pattern.
+
+#### **Retry strategies**
+- **Fixed Interval Retry**: Retry happens after a fixed amount of time.
+- **Exponential Backoff**: The waiting time increases after each failure.
+- **Randomized Exponential Backoff (Jitter)**: A random delay is added to the retry interval.
+```yml
+resilience4j:
+  retry:
+    instances:
+      paymentService:
+        maxAttempts: 3
+        waitDuration: 2s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+```
+**Config Details**
+- `maxAttempts`: 3 – Maximum total attempts, including the initial call.
+- `waitDuration`: 2s – Initial retry delay.
+- `enableExponentialBackoff`: true – Enables increasing retry delays.
+- `exponentialBackoffMultiplier`: 2 – Doubles the delay after each retry.
+```java
+@Service
+public class PaymentService {
+
+    @Retry(
+        name = "paymentService",
+        fallbackMethod = "paymentFallback"
+    )
+    public String processPayment() {
+
+        System.out.println("Calling Payment Service");
+
+        return restTemplate.getForObject(
+            "http://payment-service/pay",
+            String.class
+        );
+    }
+
+    public String paymentFallback(Exception ex) {
+        return "Payment failed after retry attempts";
+    }
+}
+```
+>If the payment request fails with a retryable exception, Resilience4j retries the operation according to the configuration.
 
 [⬆ Back to Table](#table-of-contents)
 
